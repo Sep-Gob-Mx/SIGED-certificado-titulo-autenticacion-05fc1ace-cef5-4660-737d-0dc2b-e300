@@ -1,0 +1,682 @@
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('form-busqueda');
+    const inputFolio = document.getElementById('folio');
+    const btnRestablecer = document.getElementById('btn-restablecer');
+
+    if (!form || !inputFolio) return;
+
+    // === FUNCIONES MEJORADAS PARA MANEJO DE URL ===
+    function getQueryParam(param) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(param);
+    }
+
+    function updateURL(folio = null) {
+        const url = new URL(window.location);
+        
+        if (folio) {
+            url.searchParams.set('folio', folio);
+        } else {
+            url.searchParams.delete('folio');
+        }
+        
+        window.history.replaceState({}, '', url);
+    }
+
+    function buscarFolioDesdeURL() {
+        const folioURL = getQueryParam('folio');
+        
+        if (folioURL && folioURL.trim() !== '') {
+            console.log('🔍 Folio detectado en URL:', folioURL);
+            inputFolio.value = folioURL;
+            
+            // Pequeño delay para asegurar que todo esté cargado
+            setTimeout(() => {
+                validarDocumento(folioURL);
+                // Hacer scroll suave hacia los resultados
+                setTimeout(() => {
+                    const resultsSection = document.getElementById('sectionResultWithData');
+                    if (resultsSection && resultsSection.style.display !== 'none') {
+                        resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }, 1000);
+            }, 300);
+        }
+    }
+
+    // Funciones para controlar el modal de carga
+    function mostrarLoading() {
+        const modalLoading = document.getElementById('modalLoadingSIGED');
+        if (modalLoading) {
+            modalLoading.style.display = 'block';
+        }
+    }
+
+    function ocultarLoading() {
+        const modalLoading = document.getElementById('modalLoadingSIGED');
+        if (modalLoading) {
+            modalLoading.style.display = 'none';
+        }
+    }
+
+    // === NUEVA FUNCIÓN PARA SEGURIDAD HÍBRIDA ===
+    function enviarPostSeguro(folio) {
+        console.log('🔒 Enviando consulta a filtro de seguridad...');
+        
+        // Envía por POST oculto para validación de seguridad
+        const formData = new FormData();
+        formData.append('search', folio);
+        
+        fetch('registros.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.text())
+        .then(data => {
+            console.log('🛡️ Respuesta filtro seguridad:', data);
+            
+            // Si el filtro bloquea la consulta
+            if (data.includes("That is not allowed!")) {
+                console.warn('⚠️ CONSULTA BLOQUEADA por filtro de seguridad');
+                console.warn('📛 Folio rechazado:', folio);
+                // Puedes agregar aquí notificaciones al admin si quieres
+            } else if (data.includes("VALID")) {
+                console.log('✅ Consulta pasó filtro de seguridad');
+            } else {
+                console.log('🔍 Respuesta inesperada del filtro:', data);
+            }
+        })
+        .catch(error => {
+            console.error('💥 Error en filtro seguridad:', error);
+        });
+    }
+
+    // === FUNCIONES EXISTENTES MODIFICADAS ===
+    function validarDocumento(folio) {
+        console.log('🔍 INICIANDO BÚSQUEDA CON FOLIO:', folio);
+        
+        // Mostrar modal de carga
+        mostrarLoading();
+        
+        // Actualizar URL con el folio (NUEVO)
+        updateURL(folio);
+        
+        // Usar Fetch para consultar tu API PHP
+        fetch('api/validar-documento.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ folio: folio })
+        })
+        .then(response => {
+            console.log('📡 RESPUESTA HTTP RECIBIDA. Status:', response.status);
+            if (!response.ok) {
+                throw new Error('Error HTTP: ' + response.status);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('✅ RESPUESTA JSON DE LA API:');
+            console.log('--- INICIO DATOS API ---');
+            console.log(JSON.stringify(data, null, 2));
+            console.log('--- FIN DATOS API ---');
+            console.log('Tipo de dato:', typeof data);
+            console.log('¿Tiene success?', 'success' in data);
+            console.log('¿Tiene data?', 'data' in data);
+            
+            // Ocultar modal de carga
+            ocultarLoading();
+            
+            if (data.success && data.data) {
+                console.log('🎯 Datos válidos encontrados, mostrando resultado...');
+                mostrarResultadoExitoso(data.data);
+            } else {
+                console.log('❌ No se encontraron datos o error en la respuesta');
+                mostrarResultadoError(data.message || 'Documento no encontrado');
+            }
+        })
+        .catch(error => {
+            console.error('💥 ERROR EN LA CONEXIÓN:');
+            console.error(error);
+            console.log('📋 Detalles del error:');
+            console.log('- Mensaje:', error.message);
+            console.log('- Stack:', error.stack);
+            
+            // Ocultar modal de carga en caso de error
+            ocultarLoading();
+            
+            mostrarResultadoError('No se pudo conectar con el servidor');
+        });
+    }
+
+    function ocultarResultados() {
+        const sectionWithData = document.getElementById('sectionResultWithData');
+        const divResultsWithoutData = document.getElementById('divResultsWithoutData');
+        const alertInfo = document.getElementById('alert-info-inicial');
+        
+        if (sectionWithData) sectionWithData.style.display = 'none';
+        if (divResultsWithoutData) divResultsWithoutData.style.display = 'none';
+        
+        // Mostrar el mensaje de información cuando se restablece
+        if (alertInfo) {
+            alertInfo.style.display = 'block';
+        }
+        
+        // Limpiar URL cuando se restablece (NUEVO)
+        updateURL(null);
+    }
+
+    // === EVENT LISTENERS ===
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        const folio = inputFolio.value.trim();
+        
+        if (folio) {
+            // ✅ MANTIENE tu función actual (interfaz bonita)
+            validarDocumento(folio);
+            
+            // ✅ AGREGA validación de seguridad en segundo plano
+            enviarPostSeguro(folio);
+            
+            // ✅ MANTIENE URL para QR
+            updateURL(folio);
+        } else {
+            alert('Por favor ingrese un folio válido');
+        }
+    });
+
+    if (btnRestablecer) {
+        btnRestablecer.addEventListener('click', function (e) {
+            e.preventDefault();
+            inputFolio.value = '';
+            ocultarResultados();
+        });
+    }
+
+    // === EJECUCIÓN INICIAL ===
+    // Buscar automáticamente si hay folio en la URL
+    buscarFolioDesdeURL();
+});
+
+// === FUNCIONES DE MOSTRAR RESULTADOS (MANTENER TUS FUNCIONES EXISTENTES) ===
+function mostrarResultadoExitoso(datos) {
+    console.log('📊 DATOS COMPLETOS DE LA API:', datos);
+    console.log('🔍 Campos disponibles:', Object.keys(datos));
+    
+    const section = document.getElementById('sectionResultWithData');
+    const alertInfo = document.getElementById('alert-info-inicial');
+    const divResultsWithoutData = document.getElementById('divResultsWithoutData');
+    
+    if (!section) return;
+
+    // OCULTAR el contenedor de errores (recuadro rojo y azul)
+    if (divResultsWithoutData) {
+        divResultsWithoutData.style.display = 'none';
+    }
+    
+    if (alertInfo) {
+        alertInfo.style.display = 'none';
+    }
+
+    // Mapear tipos de documento
+    const tiposDocumento = {
+        'certificado': 'Certificado de Estudios por Acuerdo 286',
+        'titulo': 'Título Profesional', 
+        'revalidacion': 'Revalidación de Estudios',
+        'equivalencia': 'Equivalencia de Estudios'
+    };
+
+    // Separar nombre completo - AJUSTA EL NOMBRE DEL CAMPO SEGÚN TU BD
+    const nombreCompleto = datos.nombre_alumno || datos.nombre_completo || datos.nombre || 'Nombre no disponible';
+    const partesNombre = nombreCompleto.split(' ');
+    const nombres = partesNombre.slice(0, -2).join(' ') || partesNombre[0] || '';
+    const primerApellido = partesNombre[partesNombre.length - 2] || '';
+    const segundoApellido = partesNombre[partesNombre.length - 1] || '';
+
+    // === CORRECCIÓN: USAR FECHA DESDE LA BASE DE DATOS ===
+    // Obtener la fecha de registro desde los datos de la API
+    // Usamos el campo 'fecha_registro' que viene de tu base de datos
+    const fechaRegistro = datos.fecha_registro || datos.fecha_siged || datos.fecha_creacion || datos.fecha || 'Fecha no disponible';
+    
+    // Formatear la fecha para mostrar en español
+    let fechaFormateada = fechaRegistro;
+    if (fechaRegistro !== 'Fecha no disponible') {
+        try {
+            // Si la fecha viene en formato MySQL (YYYY-MM-DD HH:MM:SS)
+            const fechaObj = new Date(fechaRegistro);
+            if (!isNaN(fechaObj.getTime())) {
+                fechaFormateada = fechaObj.toLocaleDateString('es-MX', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                }) + ' ' + 
+                fechaObj.getHours().toString().padStart(2, '0') + ':' + 
+                fechaObj.getMinutes().toString().padStart(2, '0') + ':' + 
+                fechaObj.getSeconds().toString().padStart(2, '0');
+            }
+        } catch (e) {
+            console.log('⚠️ No se pudo formatear la fecha, usando formato original:', fechaRegistro);
+            // Si no se puede formatear, usar el formato original de la BD
+        }
+    }
+
+    // Función para convertir número a texto CON PUNTO CERO
+    function numeroATexto(numero) {
+        const numeros = {
+            '0': 'cero',
+            '1': 'uno',
+            '2': 'dos', 
+            '3': 'tres',
+            '4': 'cuatro',
+            '5': 'cinco',
+            '6': 'seis',
+            '7': 'siete',
+            '8': 'ocho',
+            '9': 'nueve'
+        };
+        
+        if (!numero || isNaN(numero)) return 'N/A';
+        
+        // Asegurar que tenga un decimal
+        let numeroConDecimal = parseFloat(numero).toFixed(1);
+        const partes = numeroConDecimal.toString().split('.');
+        const entero = partes[0];
+        const decimal = partes[1] || '0';
+        
+        let textoEntero = numeros[entero] || entero;
+        
+        // Siempre mostrar "punto cero" incluso si el decimal es 0
+        let textoDecimal = 'punto cero';
+        if (decimal !== '0') {
+            textoDecimal = 'punto ' + (numeros[decimal] || decimal);
+        }
+        
+        // Capitalizar primera letra
+        textoEntero = textoEntero.charAt(0).toUpperCase() + textoEntero.slice(1);
+        
+        return textoEntero + ' ' + textoDecimal;
+    }
+
+    // AJUSTA LOS NOMBRES DE CAMPOS SEGÚN TU BASE DE DATOS
+    const promedio = datos.promedio || datos.calificacion_promedio || datos.promedio_final || 'N/A';
+    const promedioTexto = numeroATexto(promedio);
+    const promedioNumerico = promedio !== 'N/A' ? parseFloat(promedio).toFixed(1) : 'N/A';
+    const estudios = datos.estudios || datos.carrera || datos.nivel_estudios || 'No disponible';
+    const institucionEmisora = datos.institucion_emisora || datos.escuela || datos.institucion || 'No disponible';
+    const estatusDocumento = datos.estatus_documento || datos.estatus || datos.estado || 'No disponible';
+    const tipoDocumento = datos.tipo_documento || datos.tipo || 'No disponible';
+    const folio = datos.folio || datos.numero_folio || 'No disponible';
+
+    section.innerHTML = `
+        <div>
+            <div class="mb-3">
+                <div class="row">
+                    <div class="column col-12">
+                        <p class="titulo_subtexto" id="detalle" title="Detalle del documento" style="
+                            font-family: 'Noto Sans', sans-serif; 
+                            font-size: 22.5px; 
+                            font-weight: normal; 
+                            margin-bottom: 10px;
+                            margin-top: 0;
+                            color: #404041;
+                        ">
+                            <span>Detalle del documento</span>
+                        </p>
+                        <!-- LÍNEA GRIS PEGADA A LA DORADA -->
+                        <hr style="
+                            width: 100%; 
+                            height: 1px; 
+                            background-color: #CCCCCC; 
+                            border: none; 
+                            margin: 0 0 0 0;
+                        ">
+                        <!-- LÍNEA DORADA ORIGINAL PEGADA A LA GRIS -->
+                        <hr class="red" style="
+                            width: 35px; 
+                            height: 5px; 
+                            background-color: #a57f2c; 
+                            border: none; 
+                            margin: 0 0 15px 0;
+                        ">
+                    </div>
+                </div>
+                
+                <!-- INFORMACIÓN PRINCIPAL -->
+                <div class="row align-items-start" style="margin-top: 10px;">
+                    <!-- Nombre -->
+                    <div class="column col-lg-3 col-md-12 mb-3" style="margin: 0px 0px 10px;">
+                        <strong style="font-family: 'Noto Sans', sans-serif; font-size: 18px; font-weight: bold; color: #404041;">
+                            <span title="Nombre">Nombre:</span>
+                        </strong>
+                    </div>
+                    <div class="column col-lg-9 col-md-12 mb-3" style="margin: 0px 0px 10px;">
+                        <span style="font-family: 'Noto Sans', sans-serif; font-size: 18px; color: #404041;">
+                            ${nombres} ${primerApellido} ${segundoApellido}
+                        </span>
+                    </div>
+
+                    <!-- Tipo de documento -->
+                    <div class="column col-lg-3 col-md-12 mb-3" style="margin: 0px 0px 10px;">
+                        <strong style="font-family: 'Noto Sans', sans-serif; font-size: 18px; font-weight: bold; color: #404041;">
+                            <span title="Tipo de documento">Tipo de documento:</span>
+                        </strong>
+                    </div>
+                    <div class="column col-lg-9 col-md-12 mb-3" style="margin: 0px 0px 10px;">
+                        <span style="font-family: 'Noto Sans', sans-serif; font-size: 18px; color: #404041; text-transform: uppercase;">
+                            ${tiposDocumento[tipoDocumento] || tipoDocumento}
+                        </span>
+                    </div>
+
+                    <!-- Folio -->
+                    <div class="column col-lg-3 col-md-12 mb-3" style="margin: 0px 0px 10px;">
+                        <strong style="font-family: 'Noto Sans', sans-serif; font-size: 18px; font-weight: bold; color: #404041;">
+                            <span title="Folio">Folio:</span>
+                        </strong>
+                    </div>
+                    <div class="column col-lg-9 col-md-12 mb-3" style="margin: 0px 0px 10px;">
+                        <span style="font-family: 'Noto Sans', sans-serif; font-size: 18px; color: #404041;">
+                            ${folio}
+                        </span>
+                    </div>
+
+                    <!-- Estudios -->
+                    <div class="column col-lg-3 col-md-12 mb-3" style="margin: 0px 0px 10px;">
+                        <strong style="font-family: 'Noto Sans', sans-serif; font-size: 18px; font-weight: bold; color: #404041;">
+                            <span title="Estudios">Estudios:</span>
+                        </strong>
+                    </div>
+                    <div class="column col-lg-9 col-md-12 mb-3" style="margin: 0px 0px 10px;">
+                        <span style="font-family: 'Noto Sans', sans-serif; font-size: 18px; color: #404041;">
+                            ${estudios}
+                        </span>
+                    </div>
+
+                    <!-- Autoridad emisora -->
+                    <div class="column col-lg-3 col-md-12 mb-3" style="margin: 0px 0px 10px;">
+                        <strong style="font-family: 'Noto Sans', sans-serif; font-size: 18px; font-weight: bold; color: #404041;">
+                            <span title="Autoridad emisora">Autoridad emisora:</span>
+                        </strong>
+                    </div>
+                    <div class="column col-lg-9 col-md-12 mb-3" style="margin: 0px 0px 10px;">
+                        <span style="font-family: 'Noto Sans', sans-serif; font-size: 18px; color: #404041;">
+                            ${institucionEmisora}
+                        </span>
+                    </div>
+                    
+                    <!-- Fecha de registro en SIGED -->
+                    <div class="column col-lg-3 col-md-12 mb-3" style="margin: 0px 0px 10px;">
+                        <strong style="font-family: 'Noto Sans', sans-serif; font-size: 18px; font-weight: bold; color: #404041;">
+                            <span title="Fecha de registro en SIGED">Fecha de registro en SIGED:</span>
+                        </strong>
+                    </div>
+                    <div class="column col-lg-9 col-md-12 mb-3" style="margin: 0px 0px 10px;">
+                        <span style="font-family: 'Noto Sans', sans-serif; font-size: 18px; color: #404041;">
+                            ${fechaFormateada}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- CONTENEDOR CENTRADO PARA LOS RECUADROS -->
+                <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px;">
+                    <!-- PRIMER RECUADRO VERDE CON PROMEDIO -->
+                    <div class="alert-custom" style="
+                        background-color: #DFF0D8;
+                        border: 2px solid #D5E9C6;
+                        border-radius: 4px;
+                        color: #3C763D;
+                        padding: 15px;
+                        font-family: 'Noto Sans', sans-serif;
+                        font-size: 18px;
+                        line-height: 1.428571429;
+                        width: 392.73px;
+                        height: 152.35px;
+                        box-sizing: border-box;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        margin: 0px 0px 25px;
+                    ">
+                        <div style="text-align: center;">
+                            <div style="font-size: 18px; font-weight: bold; margin-bottom: 10px;">
+                                Resultado obtenido:
+                            </div>
+                            <div style="font-size: 18px; font-weight: ; margin-bottom: 5px;">
+                                ${promedioNumerico}
+                            </div>
+                            <div style="font-size: 18px; font-style: ;">
+                                ${promedioTexto}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SEGUNDO RECUADRO AZUL CON ESTATUS DEL DOCUMENTO -->
+                    <div class="alert-custom-blue" style="
+                        background-color: #E8F4FD;
+                        border: 2px solid #BCE8F1;
+                        border-radius: 4px;
+                        color: #31608F;
+                        padding: 15px;
+                        font-family: 'Noto Sans', sans-serif;
+                        font-size: 18px;
+                        line-height: 1.428571429;
+                        width: 392.73px;
+                        height: 120.73px;
+                        box-sizing: border-box;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        margin: 0px 0px 25px;
+                    ">
+                        <div style="text-align: center;">
+                            <div style="font-size: 18px; font-weight: bold; margin-bottom: 10px;">
+                                Estatus del documento:
+                            </div>
+                            <div style="font-size: 18px; font-weight: ;">
+                                ${estatusDocumento}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SECCIÓN GRIS CON LÍNEA DORADA AL FINAL -->
+                <div class="row" style="margin-top: 30px;">
+                    <div class="column col-12">
+                        <!-- LÍNEA GRIS -->
+                        <hr style="
+                            width: 100%; 
+                            height: 1px; 
+                            background-color: #CCCCCC; 
+                            border: none; 
+                            margin: 0 0 0 0;
+                        ">
+                        <!-- LÍNEA DORADA -->
+                        <hr class="red" style="
+                            width: 35px; 
+                            height: 5px; 
+                            background-color: #a57f2c; 
+                            border: none; 
+                            margin: 0px 0px 70px;;
+                        ">
+                    </div>
+                </div>
+
+                <!-- RECUADRO AZUL DE ATENCIÓN -->
+                <div style="display: flex; justify-content: center; margin-top: 0px;">
+                    <div class="alert-custom-attention" style="
+                        background-color: #D9EDF7;
+                        border: 2px solid #BCE8F1;
+                        border-radius: 4px;
+                        color: #31708F;
+                        padding: 20px;
+                        font-family: 'Noto Sans', sans-serif;
+                        font-size: 18px;
+                        line-height: 1.428571429;
+                        width: 362.73px;
+                        height: 485.71px;
+                        box-sizing: border-box;
+                        display: flex;
+                        flex-direction: column;
+                        justify-content: center;
+                        margin: 0px 0px 25px;
+                        text-align: left;
+                    ">
+                        <div style="margin-bottom: 15px;">
+                            <strong style="font-weight: bold;">¡Atención!</strong> La información de los certificados que se muestran en este portal, es el resultado de la integración de información que envían las autoridades educativas de los estados y de la Ciudad de México. En caso de que la información presentada no coincida con tu documento o no esté disponible, por favor ponte en contacto con la autoridad de tu centro escolar.
+                        </div>
+                        <div>
+                            La información presentada es de carácter informativa y para verificación del documento impreso. El documento oficial es el que se entrega a los padres o tutores de los educandos en sus centros escolares.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    section.style.display = 'block';
+    section.style.marginTop = '2vh';
+}
+
+function mostrarResultadoError(mensaje) {
+    const sectionWithoutData = document.getElementById('sectionResultWithoutData');
+    const alertInfo = document.getElementById('alert-info-inicial');
+    const sectionWithData = document.getElementById('sectionResultWithData');
+    const divResultsWithoutData = document.getElementById('divResultsWithoutData');
+    
+    // Ocultar otros elementos
+    if (sectionWithData) sectionWithData.style.display = 'none';
+    if (alertInfo) alertInfo.style.display = 'none';
+    
+    // MOSTRAR el contenedor de errores
+    if (divResultsWithoutData) {
+        divResultsWithoutData.style.display = 'block';
+    }
+    
+    // Mostrar el error con estilos exactos
+    if (sectionWithoutData) {
+        sectionWithoutData.innerHTML = `
+            <div data-role="page">
+                <div class="top-buffer-submenu">
+                    <!-- SEPARADOR INVISIBLE DE 20px ARRIBA DEL TEXTO -->
+                    <div style="height: 20px;"></div>
+                    
+                    <p class="titulo_subtexto" title="Información no encontrada" style="
+                        font-family: 'Noto Sans', sans-serif;
+                        font-size: 22.5px;
+                        font-weight: normal;
+                        color: #404041;
+                        margin-bottom: 10px;
+                        line-height: 1.428571429;
+                    ">Información no encontrada</p>
+                    <!-- LÍNEA GRIS PEGADA A LA DORADA -->
+                    <hr style="width: 100%; height: 1px; background-color: #CCCCCC; border: none; margin: 0 0 0 0;">
+                    <!-- LÍNEA DORADA ORIGINAL PEGADA A LA GRIS -->
+                    <hr class="red" style="
+                        width: 35px;
+                        height: 5px;
+                        background-color: #a57f2c;
+                        border: none;
+                        margin: 0 0 15px 0;
+                    ">
+                   
+                    <section style="margin: 20px; display: flex; justify-content: center;">
+                        <div style="
+                            background-color: #F2DEDE; 
+                            border: 2px solid #D9534F; 
+                            border-radius: 4px; 
+                            padding: 20px; 
+                            width: 322.73px; 
+                            height: 272.95px; 
+                            display: flex; 
+                            flex-direction: column; 
+                            justify-content: center; 
+                            align-items: center;
+                            margin: 20px;
+                        ">
+                            <p style="
+                                font-weight: bold; 
+                                margin-bottom: 15px; 
+                                font-size: 18px; 
+                                text-align: center;
+                                color: #545454;
+                                width: 278.05px;
+                                height: 76.15px;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                            ">
+                                La información solicitada no se encuentra en nuestros registros.
+                            </p>
+                            <p style="
+                                margin-bottom: 20px; 
+                                font-size: 16px; 
+                                text-align: center;
+                                color: #545454;
+                                width: 289.09px;
+                                height: 51.42px;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                            ">
+                                Verifica los datos que ingresaste y vuelve a intentarlo.
+                            </p>
+                            <button style="
+                                background-color: #FFFFFF; 
+                                color: #A57F2C; 
+                                border: 1px solid #A57F2C; 
+                                padding: 10px 20px; 
+                                border-radius: 4px; 
+                                font-size: 18px; 
+                                cursor: pointer;
+                                font-family: 'Noto Sans', sans-serif;
+                                width: 208.91px;
+                                height: 49.35px;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                            ">
+                                Volver a intentarlo
+                            </button>
+                        </div>
+                    </section>
+                    <div class="col-12">
+                        <div class="alert alert-info" style="
+                            background-color: #D9EDF7;
+                            border: 1px solid #BCE8F1;
+                            border-radius: 4px;
+                            color: #31708F;
+                            padding: 15px;
+                            font-family: 'Noto Sans', sans-serif;
+                            font-size: 18px;
+                            line-height: 1.428571429;
+                        ">
+                            <p style="
+                                margin: 0;
+                                font-family: 'Noto Sans', sans-serif;
+                                font-size: 18px;
+                                color: #31708F;
+                                line-height: 1.428571429;
+                            ">
+                                <i class="bi bi-info-circle"></i> 
+                                <span>Recuerda que los certificados estarán disponibles para su consulta un día después de su emisión.</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        sectionWithoutData.style.display = 'block';
+        
+        // Configurar el botón "Volver a intentarlo"
+        const botonReintentar = sectionWithoutData.querySelector('button');
+        if (botonReintentar) {
+            botonReintentar.onclick = function() {
+                document.getElementById('folio').value = '';
+                ocultarResultados();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+        }
+    }
+}
