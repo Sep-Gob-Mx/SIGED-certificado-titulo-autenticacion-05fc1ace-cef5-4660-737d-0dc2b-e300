@@ -68,30 +68,6 @@
             </ol>
         </div>
     </div>
-</div>
-<br>
-<main id="search" ng-controller="documentosController" class="ng-scope">
-    <div class="container container-form mt-2">
-        <form class="form" id="form-busqueda">
-            <div class="row">
-                <div class="column col-lg-6">
-                    <div class="form-group mb-2">
-                        <label for="folio" class="sr-only">Folio</label>
-                        <input id="folio" type="text" placeholder="Ingrese el folio" class="form-control mt-3 ng-pristine ng-untouched ng-empty ng-invalid ng-invalid-required" required="" ng-model="folio" value="">
-                    </div>
-                </div>
-                <div class="column col-lg-3 col-md-6 col-sm-6">
-                    <button id="btn-buscar" type="submit" class="btn btn-active btn-width mt-2">Buscar</button>
-                </div>
-                <div class="column col-lg-3 col-md-6 col-sm-6">
-                    <button id="btn-restablecer" type="reset" class="btn btn-secondary active btn-width mt-2" ng-click="newSearch()">Restablecer</button>
-                </div>
-            </div>
-        </form>
-        <div class="mt-3">
-            <a href="https://siged.sep.gob.mx/SIGED/archivos/UbicaFolio.pdf" class="btn-link link-color" target="_blank" title="Ubica el folio en tu certificado">Ubica el folio en tu certificado</a>
-        </div>
-    </div>
     <div class="container" id="divResultsWithoutData" style="display: none;">
         <section id="sectionResultWithoutData" style="display:none"></section>
         <section id="sectionErrorWhileConnecting" style="display:none"></section>
